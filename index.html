@@ -46,14 +46,14 @@
   .code{ font-weight:700; font-size:16px; }
   .name{ font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .amtwrap{
-    flex:0 1 auto; max-width:60%; display:flex; align-items:baseline; justify-content:flex-end;
+    flex:0 1 auto; display:flex; align-items:baseline; justify-content:flex-end;
     gap:6px; min-width:0;
   }
-  .sym{ flex:none; color:var(--muted); font-size:15px; font-weight:600; }
+  .sym{ flex:none; width:16px; text-align:right; color:var(--muted); font-size:15px; font-weight:600; }
   .amount{
-    flex:0 1 auto; text-align:right; background:transparent; border:none; outline:none;
+    flex:none; text-align:right; background:transparent; border:none; outline:none;
     color:var(--txt); font-size:24px; font-weight:600; font-variant-numeric:tabular-nums;
-    width:auto; min-width:0; max-width:100%; padding:0;
+    width:auto; padding:0;
   }
   .amount::placeholder{ color:var(--muted); }
   .del{
@@ -201,11 +201,16 @@ function symbolOf(code){
   }catch(e){}
   SYM_CACHE[code] = s; return s;
 }
-// set an amount field's text and size it to its content (keeps symbol glued to the number)
 function setAmt(input, str){
-  str = (str===null || str===undefined) ? "" : String(str);
-  input.value = str;
-  input.size = Math.max(1, str.length);
+  input.value = (str===null || str===undefined) ? "" : String(str);
+}
+// give every amount field the same width (the widest value) so numbers right-align
+// in one column and the fixed-width symbols line up in another
+function equalizeAmounts(){
+  const inputs = document.querySelectorAll("#list .amount");
+  let max = 1;
+  inputs.forEach(i => { max = Math.max(max, i.value.length); });
+  inputs.forEach(i => { i.size = max; });
 }
 
 function renderStatus(){
@@ -258,7 +263,6 @@ function renderList(){
       state.active = code;
       const v = parseFloat(input.value.replace(/[^0-9.]/g,""));
       state.baseAmount = isFinite(v) ? v : 0;
-      input.size = Math.max(1, input.value.length);
       updateAllExcept(code);
       renderActiveHighlight();
       savePrefs();
@@ -271,6 +275,7 @@ function renderList(){
     });
     list.appendChild(row);
   }
+  equalizeAmounts();
   renderStatus();
 }
 
@@ -281,6 +286,7 @@ function updateAllExcept(activeCode){
     if(c===activeCode) return;
     setAmt(r.querySelector(".amount"), fmt(convert(state.baseAmount, state.active, c)));
   });
+  equalizeAmounts();
 }
 function renderActiveHighlight(){
   document.querySelectorAll("#list .row").forEach(r=>{
