@@ -68,6 +68,14 @@
   .grip:active{ cursor:grabbing; }
   .row.sortable-ghost{ opacity:.35; }
   .row.sortable-chosen{ border-color:var(--accent); }
+  .install-hint{
+    display:flex; align-items:center; gap:10px; margin:4px 14px 0;
+    background:var(--accent-soft); border:1px solid var(--accent);
+    color:var(--txt); border-radius:12px; padding:10px 12px; font-size:13px;
+  }
+  .ih-text{ flex:1; line-height:1.35; }
+  .ih-btn{ flex:none; background:var(--accent); color:#fff; border:none; border-radius:8px; padding:7px 12px; font-weight:600; font-size:13px; cursor:pointer; }
+  .ih-close{ flex:none; background:transparent; border:none; color:var(--muted); font-size:18px; line-height:1; cursor:pointer; width:24px; height:24px; }
   .toolbar{ display:flex; gap:10px; padding:10px 14px 16px; }
   button.action{
     flex:1; padding:13px; border-radius:14px; border:1px solid var(--line);
@@ -103,6 +111,11 @@
     <h1>xConvert</h1>
     <span class="status" id="status">loading…</span>
   </header>
+  <div class="install-hint" id="installHint" hidden>
+    <span class="ih-text" id="ihText"></span>
+    <button class="ih-btn" id="ihInstall" hidden>Install</button>
+    <button class="ih-close" id="ihClose" aria-label="dismiss">×</button>
+  </div>
   <div id="list"></div>
   <div class="toolbar">
     <button class="action primary" id="addBtn">+ Add currency</button>
@@ -357,12 +370,53 @@ function initSortable(){
   });
 }
 
+// ---- install hint ----
+function isStandalone(){
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", (e)=>{
+  e.preventDefault();
+  deferredPrompt = e;     // Chrome/Edge/Android: show our own Install button
+  maybeShowInstallHint();
+});
+function maybeShowInstallHint(){
+  if(isStandalone() || localStorage.getItem("xconv.installDismissed")) return;
+  const ua = navigator.userAgent || "";
+  const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+  const btn = document.getElementById("ihInstall");
+  const txt = document.getElementById("ihText");
+  if(deferredPrompt){
+    txt.textContent = "Install xConvert for one-tap, offline access.";
+    btn.hidden = false;
+  } else if(isIOS){
+    txt.textContent = "Install: tap Share, then “Add to Home Screen”.";
+    btn.hidden = true;
+  } else {
+    return;               // no actionable install path — stay quiet
+  }
+  document.getElementById("installHint").hidden = false;
+}
+function dismissInstallHint(){
+  localStorage.setItem("xconv.installDismissed", "1");
+  document.getElementById("installHint").hidden = true;
+}
+document.getElementById("ihInstall").addEventListener("click", async ()=>{
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  try{ await deferredPrompt.userChoice; }catch(e){}
+  deferredPrompt = null;
+  dismissInstallHint();
+});
+document.getElementById("ihClose").addEventListener("click", dismissInstallHint);
+
 // ---- boot ----
 async function boot(){
   loadPrefs();
   loadCachedRates();
   renderList();           // paint immediately from cache (offline-first)
   initSortable();
+  maybeShowInstallHint();
   try{
     await fetchRates();
     renderList();
