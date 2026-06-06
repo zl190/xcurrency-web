@@ -42,7 +42,7 @@
   }
   .row.active{ border-color:var(--accent); background:var(--card-2); }
   .flag{ font-size:26px; width:34px; text-align:center; flex:none; }
-  .meta{ flex:1 1 auto; min-width:0; margin-right:8px; }
+  .meta{ flex:1 1 auto; min-width:76px; margin-right:8px; }
   .code{ font-weight:700; font-size:16px; }
   .name{ font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .amtwrap{
@@ -51,9 +51,9 @@
   }
   .sym{ flex:none; width:16px; text-align:right; color:var(--muted); font-size:15px; font-weight:600; }
   .amount{
-    flex:none; text-align:right; background:transparent; border:none; outline:none;
+    flex:0 1 auto; text-align:right; background:transparent; border:none; outline:none;
     color:var(--txt); font-size:24px; font-weight:600; font-variant-numeric:tabular-nums;
-    width:auto; padding:0;
+    width:auto; min-width:0; overflow:hidden; padding:0;
   }
   .amount::placeholder{ color:var(--muted); }
   .del{
@@ -212,12 +212,16 @@ function symbolOf(code){
 function setAmt(input, str){
   input.value = (str===null || str===undefined) ? "" : String(str);
 }
-// give every amount field the same width (the widest value) so numbers right-align
-// in one column and the fixed-width symbols line up in another
+// give every amount field the same width (the widest value, capped) so numbers
+// right-align in one column and the fixed-width symbols line up in another.
+// The cap stops one huge number from reflowing the whole row — values longer
+// than AMT_CAP simply scroll inside the fixed-width field.
+const AMT_CAP = 13; // e.g. "999,999,999,999"
 function equalizeAmounts(){
   const inputs = document.querySelectorAll("#list .amount");
   let max = 1;
   inputs.forEach(i => { max = Math.max(max, i.value.length); });
+  max = Math.min(max, AMT_CAP);
   inputs.forEach(i => { i.size = max; });
 }
 
