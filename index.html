@@ -42,13 +42,18 @@
   }
   .row.active{ border-color:var(--accent); background:var(--card-2); }
   .flag{ font-size:26px; width:34px; text-align:center; flex:none; }
-  .meta{ flex:none; width:64px; }
+  .meta{ flex:1 1 auto; min-width:0; margin-right:8px; }
   .code{ font-weight:700; font-size:16px; }
-  .name{ font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px; }
+  .name{ font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .amtwrap{
+    flex:0 1 auto; max-width:60%; display:flex; align-items:baseline; justify-content:flex-end;
+    gap:6px; min-width:0;
+  }
+  .sym{ flex:none; color:var(--muted); font-size:15px; font-weight:600; }
   .amount{
-    flex:1; text-align:right; background:transparent; border:none; outline:none;
+    flex:0 1 auto; text-align:right; background:transparent; border:none; outline:none;
     color:var(--txt); font-size:24px; font-weight:600; font-variant-numeric:tabular-nums;
-    width:100%; min-width:0;
+    width:auto; min-width:0; max-width:100%; padding:0;
   }
   .amount::placeholder{ color:var(--muted); }
   .del{
@@ -184,6 +189,24 @@ function rawNum(n){
   if(n===null || !isFinite(n) || n===0) return "";
   return String(Number(n.toFixed(dpFor(n))));
 }
+// platform currency symbol (narrow): $ ¥ € £ A$ ₩ …  falls back to the code
+const SYM_CACHE = {};
+function symbolOf(code){
+  if(SYM_CACHE[code]) return SYM_CACHE[code];
+  let s = code;
+  try{
+    const parts = new Intl.NumberFormat(undefined,{style:"currency",currency:code,currencyDisplay:"narrowSymbol"}).formatToParts(1);
+    const c = parts.find(p=>p.type==="currency");
+    if(c && c.value) s = c.value;
+  }catch(e){}
+  SYM_CACHE[code] = s; return s;
+}
+// set an amount field's text and size it to its content (keeps symbol glued to the number)
+function setAmt(input, str){
+  str = (str===null || str===undefined) ? "" : String(str);
+  input.value = str;
+  input.size = Math.max(1, str.length);
+}
 
 function renderStatus(){
   const el = document.getElementById("status");
@@ -210,10 +233,14 @@ function renderList(){
         <div class="code">${code}</div>
         <div class="name">${state.names[code]||""}</div>
       </div>
-      <input class="amount" inputmode="decimal" value="${code===state.active ? (state.baseAmount||"") : fmt(val)}" />
+      <div class="amtwrap">
+        <span class="sym">${symbolOf(code)}</span>
+        <input class="amount" inputmode="decimal" />
+      </div>
       <button class="del" title="remove">×</button>`;
 
     const input = row.querySelector(".amount");
+    setAmt(input, code===state.active ? rawNum(state.baseAmount) : fmt(val));
     input.addEventListener("focus", ()=>{
       if(code !== state.active){
         const v = convert(state.baseAmount, state.active, code);
@@ -222,7 +249,7 @@ function renderList(){
       }
       // show this currency's own value as a clean, editable number;
       // reformat every other row so any field that just lost focus gets its commas back
-      input.value = rawNum(state.baseAmount);
+      setAmt(input, rawNum(state.baseAmount));
       updateAllExcept(code);
       renderActiveHighlight();
       savePrefs();
@@ -231,6 +258,7 @@ function renderList(){
       state.active = code;
       const v = parseFloat(input.value.replace(/[^0-9.]/g,""));
       state.baseAmount = isFinite(v) ? v : 0;
+      input.size = Math.max(1, input.value.length);
       updateAllExcept(code);
       renderActiveHighlight();
       savePrefs();
@@ -251,7 +279,7 @@ function updateAllExcept(activeCode){
   rows.forEach(r=>{
     const c = r.querySelector(".code").textContent;
     if(c===activeCode) return;
-    r.querySelector(".amount").value = fmt(convert(state.baseAmount, state.active, c));
+    setAmt(r.querySelector(".amount"), fmt(convert(state.baseAmount, state.active, c)));
   });
 }
 function renderActiveHighlight(){
