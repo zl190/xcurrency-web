@@ -61,6 +61,13 @@
     font-size:20px; width:28px; height:28px; border-radius:50%; cursor:pointer;
   }
   .del:active{ color:var(--danger); }
+  .grip{
+    flex:none; color:var(--muted); font-size:18px; line-height:1; cursor:grab;
+    padding:0 2px 0 4px; touch-action:none; user-select:none; -webkit-user-select:none;
+  }
+  .grip:active{ cursor:grabbing; }
+  .row.sortable-ghost{ opacity:.35; }
+  .row.sortable-chosen{ border-color:var(--accent); }
   .toolbar{ display:flex; gap:10px; padding:10px 14px 16px; }
   button.action{
     flex:1; padding:13px; border-radius:14px; border:1px solid var(--line);
@@ -110,6 +117,7 @@
     </div>
   </div>
 
+<script src="Sortable.min.js"></script>
 <script>
 const API = "https://api.frankfurter.dev/v1";
 const LS_RATES = "xconv.rates.v1";
@@ -242,7 +250,8 @@ function renderList(){
         <span class="sym">${symbolOf(code)}</span>
         <input class="amount" inputmode="decimal" />
       </div>
-      <button class="del" title="remove">×</button>`;
+      <button class="del" title="remove">×</button>
+      <span class="grip" title="drag to reorder">⠿</span>`;
 
     const input = row.querySelector(".amount");
     setAmt(input, code===state.active ? rawNum(state.baseAmount) : fmt(val));
@@ -326,11 +335,30 @@ function renderPickList(q){
   }
 }
 
+// drag-to-reorder (long-press on touch). #list element is stable across
+// renderList(), so a single init keeps working as rows are replaced.
+function initSortable(){
+  if(typeof Sortable === "undefined") return;
+  Sortable.create(document.getElementById("list"), {
+    handle: ".grip",
+    animation: 150,
+    delay: 180, delayOnTouchOnly: true,
+    forceFallback: true,
+    ghostClass: "sortable-ghost",
+    chosenClass: "sortable-chosen",
+    onEnd: ()=>{
+      state.selected = [...document.querySelectorAll("#list .row")].map(r=>r.querySelector(".code").textContent);
+      savePrefs();
+    }
+  });
+}
+
 // ---- boot ----
 async function boot(){
   loadPrefs();
   loadCachedRates();
   renderList();           // paint immediately from cache (offline-first)
+  initSortable();
   try{
     await fetchRates();
     renderList();
