@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0b0d12">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>xConvert</title>
+<style>
+  :root{
+    --bg:#0b0d12; --card:#161a23; --card-2:#1d2230; --line:#262c3a;
+    --txt:#e8ecf4; --muted:#8a93a6; --accent:#4f8cff; --accent-soft:#1a2740;
+    --danger:#ff5a6a;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f4f6fb; --card:#ffffff; --card-2:#f0f3fa; --line:#e3e8f2;
+      --txt:#10131a; --muted:#6b7488; --accent:#2f6fff; --accent-soft:#e7f0ff; --danger:#e03046; }
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; height:100%; }
+  body{
+    background:var(--bg); color:var(--txt);
+    font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro",Segoe UI,Roboto,sans-serif;
+    display:flex; flex-direction:column; min-height:100vh;
+    padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom);
+  }
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 18px 8px;
+  }
+  header h1{ font-size:20px; font-weight:700; margin:0; letter-spacing:.3px; }
+  .status{ font-size:12px; color:var(--muted); }
+  .status.stale{ color:var(--danger); }
+  #list{ flex:1; padding:8px 12px 0; overflow-y:auto; }
+  .row{
+    display:flex; align-items:center; gap:12px;
+    background:var(--card); border:1px solid var(--line); border-radius:16px;
+    padding:12px 14px; margin-bottom:10px; transition:border-color .15s;
+  }
+  .row.active{ border-color:var(--accent); background:var(--card-2); }
+  .flag{ font-size:26px; width:34px; text-align:center; flex:none; }
+  .meta{ flex:none; width:64px; }
+  .code{ font-weight:700; font-size:16px; }
+  .name{ font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px; }
+  .amount{
+    flex:1; text-align:right; background:transparent; border:none; outline:none;
+    color:var(--txt); font-size:24px; font-weight:600; font-variant-numeric:tabular-nums;
+    width:100%; min-width:0;
+  }
+  .amount::placeholder{ color:var(--muted); }
+  .del{
+    flex:none; border:none; background:transparent; color:var(--muted);
+    font-size:20px; width:28px; height:28px; border-radius:50%; cursor:pointer;
+  }
+  .del:active{ color:var(--danger); }
+  .toolbar{ display:flex; gap:10px; padding:10px 14px 16px; }
+  button.action{
+    flex:1; padding:13px; border-radius:14px; border:1px solid var(--line);
+    background:var(--card); color:var(--txt); font-size:15px; font-weight:600; cursor:pointer;
+  }
+  button.action.primary{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.action:active{ transform:translateY(1px); }
+  /* picker sheet */
+  .sheet-bg{
+    position:fixed; inset:0; background:rgba(0,0,0,.5); display:none;
+    align-items:flex-end; z-index:10;
+  }
+  .sheet-bg.open{ display:flex; }
+  .sheet{
+    background:var(--card); width:100%; max-height:70vh; border-radius:20px 20px 0 0;
+    padding:14px 14px calc(14px + env(safe-area-inset-bottom)); overflow-y:auto;
+  }
+  .sheet h2{ font-size:15px; margin:4px 6px 12px; color:var(--muted); font-weight:600; }
+  .pick{
+    display:flex; align-items:center; gap:12px; padding:11px 10px; border-radius:12px; cursor:pointer;
+  }
+  .pick:active{ background:var(--card-2); }
+  .pick .code{ font-size:15px; }
+  .pick .name{ max-width:none; }
+  #search{
+    width:100%; padding:11px 14px; border-radius:12px; border:1px solid var(--line);
+    background:var(--card-2); color:var(--txt); font-size:15px; margin-bottom:10px; outline:none;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>xConvert</h1>
+    <span class="status" id="status">loading…</span>
+  </header>
+  <div id="list"></div>
+  <div class="toolbar">
+    <button class="action primary" id="addBtn">+ Add currency</button>
+    <button class="action" id="refreshBtn">↻ Refresh</button>
+  </div>
+
+  <div class="sheet-bg" id="sheetBg">
+    <div class="sheet">
+      <h2>Add a currency</h2>
+      <input id="search" placeholder="Search code or name…" autocomplete="off">
+      <div id="pickList"></div>
+    </div>
+  </div>
+
+<script>
+const API = "https://api.frankfurter.dev/v1";
+const LS_RATES = "xconv.rates.v1";
+const LS_PREFS = "xconv.prefs.v1";
+const DEFAULTS = ["USD","EUR","CNY","JPY","GBP"];
+
+// currency code -> emoji flag (first 2 letters as region code; handles most)
+const FLAG_OVERRIDE = { EUR:"🇪🇺", XAU:"🥇", XAG:"🥈" };
+function flag(code){
+  if(FLAG_OVERRIDE[code]) return FLAG_OVERRIDE[code];
+  const cc = code.slice(0,2).toUpperCase();
+  if(!/^[A-Z]{2}$/.test(cc)) return "💱";
+  return String.fromCodePoint(...[...cc].map(c=>0x1F1E6 + c.charCodeAt(0) - 65));
+}
+
+let state = {
+  rates: {},      // currency -> units per 1 EUR
+  date: null,
+  names: {},      // currency -> full name
+  selected: [],   // currency codes shown, in order
+  active: null,   // currency code being edited
+  baseAmount: 1,  // amount in `active` currency
+};
+
+function loadPrefs(){
+  try{
+    const p = JSON.parse(localStorage.getItem(LS_PREFS));
+    if(p && Array.isArray(p.selected) && p.selected.length){
+      state.selected = p.selected;
+      state.active = p.active || p.selected[0];
+      state.baseAmount = typeof p.baseAmount==="number" ? p.baseAmount : 1;
+      return;
+    }
+  }catch(e){}
+  state.selected = [...DEFAULTS];
+  state.active = DEFAULTS[0];
+  state.baseAmount = 1;
+}
+function savePrefs(){
+  localStorage.setItem(LS_PREFS, JSON.stringify({
+    selected: state.selected, active: state.active, baseAmount: state.baseAmount
+  }));
+}
+
+function loadCachedRates(){
+  try{
+    const c = JSON.parse(localStorage.getItem(LS_RATES));
+    if(c && c.rates){ state.rates = c.rates; state.date = c.date; state.names = c.names||{}; return true; }
+  }catch(e){}
+  return false;
+}
+
+async function fetchRates(){
+  // rates against EUR base; EUR itself = 1
+  const [r, names] = await Promise.all([
+    fetch(API + "/latest?from=EUR").then(x=>x.json()),
+    Object.keys(state.names).length ? Promise.resolve(state.names)
+      : fetch(API + "/currencies").then(x=>x.json())
+  ]);
+  const rates = Object.assign({ EUR:1 }, r.rates);
+  state.rates = rates; state.date = r.date; state.names = names;
+  localStorage.setItem(LS_RATES, JSON.stringify({ rates, date:r.date, names }));
+}
+
+function convert(amount, from, to){
+  const rf = state.rates[from], rt = state.rates[to];
+  if(!rf || !rt) return null;
+  return amount / rf * rt; // amount(from) -> EUR -> to
+}
+function dpFor(n){ const a=Math.abs(n); return a>=1000?0 : a>=1?2 : a>=0.01?4 : 6; }
+function fmt(n){
+  if(n===null || !isFinite(n)) return "—";
+  return n.toLocaleString(undefined,{minimumFractionDigits:0, maximumFractionDigits:dpFor(n)});
+}
+// plain editable number: no thousands separators, no trailing-zero noise
+function rawNum(n){
+  if(n===null || !isFinite(n) || n===0) return "";
+  return String(Number(n.toFixed(dpFor(n))));
+}
+
+function renderStatus(){
+  const el = document.getElementById("status");
+  if(!state.date){ el.textContent = "no rates yet"; el.className="status stale"; return; }
+  const days = Math.floor((Date.now() - new Date(state.date+"T00:00:00").getTime())/86400000);
+  const stale = days > 4;
+  el.textContent = "rates: " + state.date + (stale ? " (offline)" : "");
+  el.className = "status" + (stale ? " stale":"");
+}
+
+function renderList(){
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  for(const code of state.selected){
+    const row = document.createElement("div");
+    row.className = "row" + (code===state.active ? " active":"");
+    const val = code===state.active
+      ? state.baseAmount
+      : convert(state.baseAmount, state.active, code);
+
+    row.innerHTML = `
+      <div class="flag">${flag(code)}</div>
+      <div class="meta">
+        <div class="code">${code}</div>
+        <div class="name">${state.names[code]||""}</div>
+      </div>
+      <input class="amount" inputmode="decimal" value="${code===state.active ? (state.baseAmount||"") : fmt(val)}" />
+      <button class="del" title="remove">×</button>`;
+
+    const input = row.querySelector(".amount");
+    input.addEventListener("focus", ()=>{
+      if(code !== state.active){
+        const v = convert(state.baseAmount, state.active, code);
+        state.active = code;
+        state.baseAmount = (v===null || !isFinite(v)) ? 0 : v;
+      }
+      // show this currency's own value as a clean, editable number
+      input.value = rawNum(state.baseAmount);
+      renderActiveHighlight();
+      savePrefs();
+    });
+    input.addEventListener("input", ()=>{
+      state.active = code;
+      const v = parseFloat(input.value.replace(/[^0-9.]/g,""));
+      state.baseAmount = isFinite(v) ? v : 0;
+      updateAllExcept(code);
+      renderActiveHighlight();
+      savePrefs();
+    });
+    row.querySelector(".del").addEventListener("click",(e)=>{
+      e.stopPropagation();
+      state.selected = state.selected.filter(c=>c!==code);
+      if(state.active===code) state.active = state.selected[0]||null;
+      savePrefs(); renderList();
+    });
+    list.appendChild(row);
+  }
+  renderStatus();
+}
+
+function updateAllExcept(activeCode){
+  const rows = document.querySelectorAll("#list .row");
+  rows.forEach(r=>{
+    const c = r.querySelector(".code").textContent;
+    if(c===activeCode) return;
+    r.querySelector(".amount").value = fmt(convert(state.baseAmount, state.active, c));
+  });
+}
+function renderActiveHighlight(){
+  document.querySelectorAll("#list .row").forEach(r=>{
+    const c = r.querySelector(".code").textContent;
+    r.classList.toggle("active", c===state.active);
+  });
+}
+
+// ---- picker sheet ----
+function openPicker(){
+  const bg = document.getElementById("sheetBg");
+  const search = document.getElementById("search");
+  search.value = "";
+  renderPickList("");
+  bg.classList.add("open");
+  setTimeout(()=>search.focus(), 50);
+}
+function renderPickList(q){
+  const pl = document.getElementById("pickList");
+  q = q.trim().toUpperCase();
+  const codes = Object.keys(state.names).sort();
+  pl.innerHTML = "";
+  for(const code of codes){
+    if(state.selected.includes(code)) continue;
+    const name = state.names[code]||"";
+    if(q && !code.includes(q) && !name.toUpperCase().includes(q)) continue;
+    const el = document.createElement("div");
+    el.className = "pick";
+    el.innerHTML = `<div class="flag">${flag(code)}</div>
+      <div class="meta" style="width:auto"><div class="code">${code}</div><div class="name">${name}</div></div>`;
+    el.addEventListener("click", ()=>{
+      state.selected.push(code);
+      savePrefs(); renderList();
+      document.getElementById("sheetBg").classList.remove("open");
+    });
+    pl.appendChild(el);
+  }
+}
+
+// ---- boot ----
+async function boot(){
+  loadPrefs();
+  loadCachedRates();
+  renderList();           // paint immediately from cache (offline-first)
+  try{
+    await fetchRates();
+    renderList();
+  }catch(e){
+    renderStatus();       // keep cached values, mark offline
+  }
+}
+
+document.getElementById("addBtn").addEventListener("click", openPicker);
+document.getElementById("refreshBtn").addEventListener("click", async ()=>{
+  document.getElementById("status").textContent = "refreshing…";
+  try{ await fetchRates(); renderList(); }catch(e){ renderStatus(); }
+});
+document.getElementById("sheetBg").addEventListener("click",(e)=>{
+  if(e.target.id==="sheetBg") e.currentTarget.classList.remove("open");
+});
+document.getElementById("search").addEventListener("input",(e)=>renderPickList(e.target.value));
+
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+boot();
+</script>
+</body>
+</html>
