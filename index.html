@@ -85,6 +85,7 @@
   }
   button.action.primary{ background:var(--accent); border-color:var(--accent); color:#fff; }
   button.action:active{ transform:translateY(1px); }
+  #clearBtn{ flex:0 0 auto; }
   /* picker sheet */
   .sheet-bg{
     position:fixed; inset:0; background:rgba(0,0,0,.5); display:none;
@@ -121,6 +122,7 @@
   <div id="list"></div>
   <div class="toolbar">
     <button class="action primary" id="addBtn">+ Add currency</button>
+    <button class="action" id="clearBtn" title="clear amounts">Clear</button>
   </div>
 
   <div class="sheet-bg" id="sheetBg">
@@ -204,6 +206,7 @@ function convert(amount, from, to){
 function dpFor(n){ const a=Math.abs(n); return a>=1000?0 : a>=1?2 : a>=0.01?4 : 6; }
 function fmt(n){
   if(n===null || !isFinite(n)) return "—";
+  if(n===0) return "";   // cleared/blank state shows empty fields, not "0"
   return n.toLocaleString(undefined,{minimumFractionDigits:0, maximumFractionDigits:dpFor(n)});
 }
 // plain editable number: no thousands separators, no trailing-zero noise
@@ -285,6 +288,7 @@ function renderList(){
       updateAllExcept(code);
       renderActiveHighlight();
       savePrefs();
+      input.select();   // state-free input: next keystroke replaces the value
     });
     input.addEventListener("input", ()=>{
       state.active = code;
@@ -441,6 +445,12 @@ async function boot(){
 }
 
 document.getElementById("addBtn").addEventListener("click", openPicker);
+// clear all amounts to a blank slate (state-free / privacy)
+document.getElementById("clearBtn").addEventListener("click", ()=>{
+  state.baseAmount = 0;
+  renderList();
+  savePrefs();
+});
 // tap the "rates: <date>" line to force a manual refresh
 document.getElementById("status").addEventListener("click", refreshRates);
 // auto-refetch when the app regains focus on a new day (or never succeeded yet)
