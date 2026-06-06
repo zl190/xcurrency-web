@@ -75,6 +75,11 @@
     background:var(--accent-soft); border:1px solid var(--accent);
     color:var(--txt); border-radius:12px; padding:10px 12px; font-size:13px;
   }
+  /* installable platforms: whole banner is the one-tap install target */
+  .install-hint.tap{ cursor:pointer; }
+  .install-hint.tap:active{ transform:translateY(1px); }
+  /* iOS: no programmatic install — render as an informational notice, not a button */
+  .install-hint.notice{ background:var(--card-2); border-color:var(--line); cursor:default; }
   .ih-text{ flex:1; line-height:1.35; }
   .ih-btn{ flex:none; background:var(--accent); color:#fff; border:none; border-radius:8px; padding:7px 12px; font-weight:600; font-size:13px; cursor:pointer; }
   .ih-close{ flex:none; background:transparent; border:none; color:var(--muted); font-size:18px; line-height:1; cursor:pointer; width:24px; height:24px; }
@@ -389,31 +394,39 @@ function maybeShowInstallHint(){
   if(isStandalone() || localStorage.getItem("xconv.installDismissed")) return;
   const ua = navigator.userAgent || "";
   const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+  const el = document.getElementById("installHint");
   const btn = document.getElementById("ihInstall");
   const txt = document.getElementById("ihText");
   if(deferredPrompt){
-    txt.textContent = "Install xConvert for one-tap, offline access.";
+    // Chrome/Android: the whole banner is a one-tap install button.
+    txt.textContent = "Tap to install xConvert — one tap, works offline.";
     btn.hidden = false;
+    el.classList.add("tap"); el.classList.remove("notice");
   } else if(isIOS){
-    txt.textContent = "Install: tap Share, then “Add to Home Screen”.";
+    // iOS has no programmatic install — this is a notice, not a button.
+    txt.textContent = "To install: tap the Share button, then “Add to Home Screen”.";
     btn.hidden = true;
+    el.classList.add("notice"); el.classList.remove("tap");
   } else {
     return;               // no actionable install path — stay quiet
   }
-  document.getElementById("installHint").hidden = false;
+  el.hidden = false;
 }
 function dismissInstallHint(){
   localStorage.setItem("xconv.installDismissed", "1");
   document.getElementById("installHint").hidden = true;
 }
-document.getElementById("ihInstall").addEventListener("click", async ()=>{
-  if(!deferredPrompt) return;
+async function triggerInstall(){
+  if(!deferredPrompt) return;        // only possible where the browser offered a prompt
   deferredPrompt.prompt();
   try{ await deferredPrompt.userChoice; }catch(e){}
   deferredPrompt = null;
   dismissInstallHint();
-});
-document.getElementById("ihClose").addEventListener("click", dismissInstallHint);
+}
+// whole banner installs on capable platforms; the × dismisses without installing
+document.getElementById("installHint").addEventListener("click", ()=>{ if(deferredPrompt) triggerInstall(); });
+document.getElementById("ihInstall").addEventListener("click", (e)=>{ e.stopPropagation(); triggerInstall(); });
+document.getElementById("ihClose").addEventListener("click", (e)=>{ e.stopPropagation(); dismissInstallHint(); });
 
 // ---- rates refresh ----
 // Source (ECB) updates once per business day, so we don't need a manual button:
