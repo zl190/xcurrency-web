@@ -32,7 +32,8 @@
     padding:18px 18px 8px;
   }
   header h1{ font-size:20px; font-weight:700; margin:0; letter-spacing:.3px; }
-  .status{ font-size:12px; color:var(--muted); }
+  .status{ font-size:12px; color:var(--muted); cursor:pointer; user-select:none; }
+  .status:active{ opacity:.6; }
   .status.stale{ color:var(--danger); }
   #list{ flex:1; padding:8px 12px 0; overflow-y:auto; }
   .row{
@@ -68,6 +69,7 @@
   .grip:active{ cursor:grabbing; }
   .row.sortable-ghost{ opacity:.35; }
   .row.sortable-chosen{ border-color:var(--accent); }
+  .install-hint[hidden]{ display:none; }
   .install-hint{
     display:flex; align-items:center; gap:10px; margin:4px 14px 0;
     background:var(--accent-soft); border:1px solid var(--accent);
@@ -109,7 +111,7 @@
 <body>
   <header>
     <h1>xConvert</h1>
-    <span class="status" id="status">loading…</span>
+    <span class="status" id="status" title="tap to refresh rates">loading…</span>
   </header>
   <div class="install-hint" id="installHint" hidden>
     <span class="ih-text" id="ihText"></span>
@@ -119,7 +121,6 @@
   <div id="list"></div>
   <div class="toolbar">
     <button class="action primary" id="addBtn">+ Add currency</button>
-    <button class="action" id="refreshBtn">↻ Refresh</button>
   </div>
 
   <div class="sheet-bg" id="sheetBg">
@@ -410,6 +411,25 @@ document.getElementById("ihInstall").addEventListener("click", async ()=>{
 });
 document.getElementById("ihClose").addEventListener("click", dismissInstallHint);
 
+// ---- rates refresh ----
+// Source (ECB) updates once per business day, so we don't need a manual button:
+// fetch on open, again when the app regains focus on a new day, and on reconnect.
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+let lastFetchDay = null;  // local day of the last *successful* fetch
+async function refreshRates(){
+  document.getElementById("status").textContent = "refreshing…";
+  try{
+    await fetchRates();
+    lastFetchDay = todayStr();
+    renderList();
+  }catch(e){
+    renderStatus();        // keep cached values, mark offline
+  }
+}
+
 // ---- boot ----
 async function boot(){
   loadPrefs();
@@ -417,19 +437,18 @@ async function boot(){
   renderList();           // paint immediately from cache (offline-first)
   initSortable();
   maybeShowInstallHint();
-  try{
-    await fetchRates();
-    renderList();
-  }catch(e){
-    renderStatus();       // keep cached values, mark offline
-  }
+  await refreshRates();
 }
 
 document.getElementById("addBtn").addEventListener("click", openPicker);
-document.getElementById("refreshBtn").addEventListener("click", async ()=>{
-  document.getElementById("status").textContent = "refreshing…";
-  try{ await fetchRates(); renderList(); }catch(e){ renderStatus(); }
+// tap the "rates: <date>" line to force a manual refresh
+document.getElementById("status").addEventListener("click", refreshRates);
+// auto-refetch when the app regains focus on a new day (or never succeeded yet)
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState==="visible" && lastFetchDay !== todayStr()) refreshRates();
 });
+// auto-refetch when connectivity returns
+window.addEventListener("online", refreshRates);
 document.getElementById("sheetBg").addEventListener("click",(e)=>{
   if(e.target.id==="sheetBg") e.currentTarget.classList.remove("open");
 });
