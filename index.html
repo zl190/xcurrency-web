@@ -220,8 +220,10 @@ function renderList(){
         state.active = code;
         state.baseAmount = (v===null || !isFinite(v)) ? 0 : v;
       }
-      // show this currency's own value as a clean, editable number
+      // show this currency's own value as a clean, editable number;
+      // reformat every other row so any field that just lost focus gets its commas back
       input.value = rawNum(state.baseAmount);
+      updateAllExcept(code);
       renderActiveHighlight();
       savePrefs();
     });
