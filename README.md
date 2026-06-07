@@ -5,7 +5,7 @@ Convert one amount into many currencies at once — an installable, offline web 
 [![Live demo](https://img.shields.io/badge/demo-live-4f8cff?style=flat-square)](https://zl190.github.io/xcurrency-web/)
 ![PWA](https://img.shields.io/badge/PWA-installable-5a67ff?style=flat-square)
 ![Offline](https://img.shields.io/badge/works-offline-2ea44f?style=flat-square)
-![Build](https://img.shields.io/badge/build-none-555?style=flat-square)
+![No build](https://img.shields.io/badge/no_build-vanilla_JS-555?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 
 <p align="center">
@@ -30,7 +30,7 @@ After the first open it runs offline from its last fetched rates.
 ## Features
 
 - **Edit any row** — type in a currency and all others convert live (no direction to pick).
-- **Multiple currencies at once** — add any of 30+ currencies via search; remove with ×.
+- **Multiple currencies at once** — add any of 30 currencies via search; remove with ×.
 - **Drag to reorder** — grab the handle to put your most-used currencies on top; the order is remembered.
 - **Per-currency symbols** ($, €, ¥, £ …) in a clean aligned column.
 - **Reset** — one tap returns to the base currency at `1`, i.e. a live rate table.
