@@ -140,7 +140,8 @@
 
 <script src="Sortable.min.js"></script>
 <script>
-const API = "https://api.frankfurter.dev/v1";
+const API = "https://api.frankfurter.dev/v1";                  // primary: ECB via Frankfurter
+const API_FALLBACK = "https://open.er-api.com/v6/latest/EUR";  // backup: reachable where frankfurter is blocked
 const LS_RATES = "xconv.rates.v1";
 const LS_PREFS = "xconv.prefs.v1";
 const DEFAULTS = ["USD","EUR","CNY","JPY","GBP"];
@@ -157,6 +158,7 @@ function flag(code){
 let state = {
   rates: {},      // currency -> units per 1 EUR
   date: null,
+  src: null,      // which source produced the rates ("ECB" | "ER-API backup")
   names: {},      // currency -> full name
   selected: [],   // currency codes shown, in order
   active: null,   // currency code being edited
@@ -186,21 +188,61 @@ function savePrefs(){
 function loadCachedRates(){
   try{
     const c = JSON.parse(localStorage.getItem(LS_RATES));
-    if(c && c.rates){ state.rates = c.rates; state.date = c.date; state.names = c.names||{}; return true; }
+    if(c && c.rates){ state.rates = c.rates; state.date = c.date; state.src = c.src||null; state.names = c.names||{}; return true; }
   }catch(e){}
   return false;
 }
 
 async function fetchRates(){
-  // rates against EUR base; EUR itself = 1
-  const [r, names] = await Promise.all([
-    fetch(API + "/latest?from=EUR").then(x=>x.json()),
-    Object.keys(state.names).length ? Promise.resolve(state.names)
-      : fetch(API + "/currencies").then(x=>x.json())
-  ]);
-  const rates = Object.assign({ EUR:1 }, r.rates);
-  state.rates = rates; state.date = r.date; state.names = names;
-  localStorage.setItem(LS_RATES, JSON.stringify({ rates, date:r.date, names }));
+  // rates against EUR base; EUR itself = 1.
+  // Primary: Frankfurter (ECB). frankfurter.dev is often unreachable on
+  // mainland-China networks — old installs coasted on the localStorage
+  // cache, new installs got no rates at all — so fall back to ER-API
+  // (different host, same EUR base) when the primary fails.
+  let rates, date, src;
+  try{
+    const res = await fetch(API + "/latest?from=EUR");
+    if(!res.ok) throw 0;
+    const j = await res.json();
+    if(!(j && j.rates && j.rates.USD > 0)) throw 0;
+    rates = Object.assign({ EUR:1 }, j.rates);
+    date = j.date; src = "ECB";
+    if(!Object.keys(state.names).length){
+      // names table only exists on frankfurter; a miss is fine — namesFor()
+      // fills the gap from Intl.DisplayNames below
+      try{ state.names = await (await fetch(API + "/currencies")).json(); }catch(e){}
+    }
+  }catch(e){
+    const j = await (await fetch(API_FALLBACK)).json();
+    if(!(j && j.result === "success" && j.rates && j.rates.USD > 0)) throw 0;
+    rates = Object.assign({ EUR:1 }, j.rates);
+    date = isoDate(j.time_last_update_utc); src = "ER-API backup";
+  }
+  const names = namesFor(Object.keys(rates));
+  state.rates = rates; state.date = date; state.src = src; state.names = names;
+  localStorage.setItem(LS_RATES, JSON.stringify({ rates, date, src, names }));
+}
+
+// ER-API stamps "Fri, 13 Jun 2026 00:02:31 +0000"; renderStatus wants YYYY-MM-DD
+function isoDate(utc){
+  const d = new Date(utc);
+  if(isNaN(d)) return todayStr();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+
+// names for exactly the currencies we have rates for: keep the cached
+// (frankfurter) name when there is one, else ask Intl.DisplayNames, else the
+// code itself — the ER-API fallback must never fail for lack of a names table
+function namesFor(codes){
+  let dn = null;
+  try{ dn = new Intl.DisplayNames(undefined, { type:"currency" }); }catch(e){}
+  const names = {};
+  for(const code of codes){
+    let n = state.names[code];
+    if(!n && dn){ try{ n = dn.of(code); }catch(e){} }
+    names[code] = n || code;
+  }
+  return names;
 }
 
 function convert(amount, from, to){
@@ -252,7 +294,7 @@ function renderStatus(){
   if(!state.date){ el.textContent = "no rates yet"; el.className="status stale"; return; }
   const days = Math.floor((Date.now() - new Date(state.date+"T00:00:00").getTime())/86400000);
   const stale = days > 4;
-  el.textContent = "rates: " + state.date + (stale ? " (offline)" : "");
+  el.textContent = "rates: " + state.date + (state.src ? " · " + state.src : "") + (stale ? " (offline)" : "");
   el.className = "status" + (stale ? " stale":"");
 }
 

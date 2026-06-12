@@ -3,7 +3,7 @@
 // refresh the cache in the background so the next open auto-updates. No need
 // to bump this file or hard-refresh on every deploy.
 // Rates API + cross-origin: bypass the SW entirely (always hit network).
-const CACHE = "xconv-v3";
+const CACHE = "xconv-v4";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png", "./Sortable.min.js"];
 
 self.addEventListener("install", (e) => {
